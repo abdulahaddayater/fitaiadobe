@@ -1,5 +1,6 @@
 {
   "buildCommand": "echo \"Skipping build: deploying API only\"",
+  "outputDirectory": "public",
   "functions": {
     "api/tryon.mjs": {
       "maxDuration": 120
