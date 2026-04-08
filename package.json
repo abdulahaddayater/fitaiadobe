@@ -5,7 +5,7 @@
     "scripts": {
         "clean": "ccweb-add-on-scripts clean",
         "build": "ccweb-add-on-scripts build",
-        "start": "ccweb-add-on-scripts start",
+        "start": "kill-port 5241 && ccweb-add-on-scripts start",
         "api": "node server/index.mjs",
         "dev": "kill-port 5241 5242 && concurrently -k -n ADDON,API -c blue,green \"npm:start\" \"npm:api\"",
         "package": "ccweb-add-on-scripts package"

@@ -21,6 +21,15 @@ if (!FASHN_API_KEY && (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_OPENAI_API_KE
 const app = express();
 app.use(express.json({ limit: "25mb" }));
 
+app.get("/health", (req, res) => {
+  return res.json({
+    ok: true,
+    service: "fitai-local",
+    mode: FASHN_API_KEY ? "fashn" : "openai",
+    time: new Date().toISOString(),
+  });
+});
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowed =

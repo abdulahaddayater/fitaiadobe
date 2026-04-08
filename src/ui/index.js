@@ -1,13 +1,41 @@
 import addOnUISdk from "https://new.express.adobe.com/static/add-on-sdk/sdk.js";
 
-// ── Local API proxy (avoids CORS in add-on panel) ───────────────────────────
+// ── API selection ─────────────────────────────────────────────────────────────
+// Local is fastest for dev, but hosted add-ons cannot reach loopback.
 const LOCAL_API_BASE_URL = "https://localhost:5242";
 const VERCEL_API_BASE_URL = "https://fitaiadobe.vercel.app";
 
-const API_BASE_URL =
-    window.location.hostname === "localhost"
-        ? LOCAL_API_BASE_URL
-        : VERCEL_API_BASE_URL;
+let resolvedApiBaseUrl = null;
+async function getApiBaseUrl() {
+    if (resolvedApiBaseUrl) return resolvedApiBaseUrl;
+
+    // If we're clearly running on Adobe-hosted origin, never try loopback.
+    const host = window.location.hostname || "";
+    const isAdobeHosted = /\.wxp\.adobe-addons\.com$/i.test(host);
+    if (isAdobeHosted) {
+        resolvedApiBaseUrl = VERCEL_API_BASE_URL;
+        return resolvedApiBaseUrl;
+    }
+
+    // If we're on localhost, prefer local API but fall back to Vercel if it's down.
+    if (host === "localhost") {
+        try {
+            const controller = new AbortController();
+            const t = setTimeout(() => controller.abort(), 800);
+            const res = await fetch(`${LOCAL_API_BASE_URL}/health`, { signal: controller.signal });
+            clearTimeout(t);
+            if (res.ok) {
+                resolvedApiBaseUrl = LOCAL_API_BASE_URL;
+                return resolvedApiBaseUrl;
+            }
+        } catch {
+            // ignore; fall back below
+        }
+    }
+
+    resolvedApiBaseUrl = VERCEL_API_BASE_URL;
+    return resolvedApiBaseUrl;
+}
 
 // Hidden, always-sent prompt notes (not shown in UI)
 const EXTRA_PROMPT =
@@ -99,6 +127,8 @@ async function runTryOn() {
         fitStyle: state.selectedFit,
         extraPrompt: EXTRA_PROMPT,
     };
+
+    const API_BASE_URL = await getApiBaseUrl();
 
     console.group("[FitAI] Local try-on request");
     console.log("URL:", `${API_BASE_URL}/tryon`);
