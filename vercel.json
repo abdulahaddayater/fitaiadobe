@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "api/tryon.mjs": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "rewrites": [
+    { "source": "/tryon", "destination": "/api/tryon" }
+  ]
+}
+

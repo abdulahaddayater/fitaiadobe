@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fit AI</title>
+    <style>
+        /* ── Spectrum-inspired tokens ───────────────────── */
+        :root {
+            --accent:        #5258E4;
+            --accent-hover:  #3F45C2;
+            --accent-light:  #EEEFFE;
+            --accent-border: #C3C5F7;
+            --text-primary:  #1D1D1D;
+            --text-secondary:#6E6E6E;
+            --text-disabled: #ADADAD;
+            --bg:            #FFFFFF;
+            --surface:       #F8F8F8;
+            --border:        #E1E1E1;
+            --border-focus:  #5258E4;
+            --success:       #107858;
+            --success-bg:    #EAF7F3;
+            --error:         #C9281C;
+            --error-bg:      #FFF0EF;
+            --radius-sm:     4px;
+            --radius-md:     8px;
+            --radius-lg:     10px;
+            --font:          adobe-clean, 'Source Sans Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --shadow-sm:     0 1px 4px rgba(0,0,0,.08);
+            --shadow-md:     0 2px 12px rgba(0,0,0,.1);
+        }
+
+        /* ── Reset ─────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text-primary);
+            font-family: var(--font);
+            font-size: 14px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #D0D0D0; border-radius: 4px; }
+
+        /* ── Layout ────────────────────────────────────── */
+        .panel {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            padding: 16px;
+            gap: 16px;
+        }
+
+        /* ── Section label ─────────────────────────────── */
+        .label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 8px;
+        }
+
+        /* ── Upload grid ────────────────────────────────── */
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .upload-col { display: flex; flex-direction: column; gap: 6px; }
+
+        .upload-col-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* ── Upload Zone ─────────────────────────────────── */
+        .upload-zone {
+            position: relative;
+            border: 1.5px dashed var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+            cursor: pointer;
+            transition: border-color .15s, background .15s;
+            overflow: hidden;
+            aspect-ratio: 3/4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 12px 8px;
+        }
+
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .upload-zone.loaded {
+            border-style: solid;
+            border-color: var(--accent-border);
+            padding: 0;
+        }
+
+        .upload-zone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+
+        .upload-icon {
+            font-size: 24px;
+            margin-bottom: 6px;
+            line-height: 1;
+        }
+
+        .upload-hint {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .upload-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+            border-radius: calc(var(--radius-md) - 1px);
+        }
+
+        .upload-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,.42);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            border-radius: calc(var(--radius-md) - 1px);
+        }
+
+        .upload-zone.loaded:hover .upload-overlay { display: flex; }
+
+        .upload-overlay-text {
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        /* ── Divider ─────────────────────────────────────── */
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border);
+        }
+
+        /* ── Fit Style ───────────────────────────────────── */
+        .fit-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .fit-btn {
+            flex: 1;
+            padding: 10px 4px 8px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg);
+            color: var(--text-secondary);
+            font-family: var(--font);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: border-color .15s, background .15s, color .15s;
+        }
+
+        .fit-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .fit-btn.selected {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .fit-btn-icon { font-size: 20px; line-height: 1; }
+        .fit-btn-sub  { font-size: 9px; color: var(--text-secondary); font-weight: 400; }
+
+        .fit-btn.selected .fit-btn-sub { color: var(--accent); }
+
+        /* ── Primary button ─────────────────────────────── */
+        .btn-primary {
+            width: 100%;
+            padding: 11px 16px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #fff;
+            font-family: var(--font);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            transition: background .15s, box-shadow .15s, transform .1s;
+            letter-spacing: .1px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--accent-hover);
+            box-shadow: 0 3px 12px rgba(82,88,228,.3);
+        }
+
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(1px);
+            box-shadow: none;
+        }
+
+        .btn-primary:disabled {
+            background: #C0C2EC;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* ── Secondary button ───────────────────────────── */
+        .btn-secondary {
+            flex: 1;
+            padding: 9px 12px;
+            background: var(--bg);
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: border-color .15s, background .15s;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            border-color: var(--accent);
+            background: var(--accent-light);
+            color: var(--accent);
+        }
+
+        .btn-secondary:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+        }
+
+        /* ── Spinner ─────────────────────────────────────── */
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,.35);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Processing card ─────────────────────────────── */
+        .processing-card {
+            display: none;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 20px 16px;
+            text-align: center;
+        }
+
+        .processing-card.visible { display: block; }
+
+        .processing-spinner {
+            width: 40px; height: 40px;
+            border: 3px solid var(--accent-light);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin .85s linear infinite;
+            margin: 0 auto 14px;
+        }
+
+        .processing-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .processing-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .proc-steps { text-align: left; }
+
+        .proc-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .proc-step:last-child { border-bottom: none; }
+        .proc-step.active { color: var(--text-primary); font-weight: 600; }
+        .proc-step.done   { color: var(--success); }
+
+        .proc-step-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--border);
+            flex-shrink: 0;
+            transition: background .2s;
+        }
+
+        .proc-step.active .proc-step-dot { background: var(--accent); }
+        .proc-step.done   .proc-step-dot { background: var(--success); }
+
+        /* ── Result section ──────────────────────────────── */
+        .result-section {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .result-section.visible { display: flex; }
+
+        .result-image-box {
+            width: 100%;
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            background: var(--surface);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .result-image-box img {
+            width: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        .result-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-add {
+            flex: 2;
+            padding: 10px 12px;
+            background: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            color: #fff;
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: background .15s, box-shadow .15s;
+        }
+
+        .btn-add:hover { background: var(--accent-hover); box-shadow: 0 3px 10px rgba(82,88,228,.28); }
+        .btn-add:disabled { background: #C0C2EC; cursor: not-allowed; box-shadow: none; }
+
+        /* ── Notice / info ───────────────────────────────── */
+        .notice {
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 8px 10px;
+            line-height: 1.5;
+        }
+
+        .notice b { color: var(--text-primary); }
+
+        /* ── Toast ───────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%) translateY(50px);
+            background: var(--text-primary);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 20px;
+            white-space: nowrap;
+            box-shadow: var(--shadow-md);
+            transition: transform .25s ease, opacity .25s ease;
+            opacity: 0;
+            z-index: 999;
+        }
+
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        .toast.success { background: var(--success); }
+        .toast.error   { background: var(--error); }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="panel">
+
+    <!-- ── Upload Section ──────────────────────────── -->
+    <div id="upload-section">
+        <div class="label">Upload Images</div>
+        <div class="upload-grid">
+
+            <!-- Person Photo -->
+            <div class="upload-col">
+                <span class="upload-col-label">Person</span>
+                <div class="upload-zone" id="person-zone">
+                    <input type="file" id="person-input" accept="image/*" />
+                    <span class="upload-icon">🧍</span>
+                    <span class="upload-hint">Photo or<br>model image</span>
+                    <img id="person-preview" class="upload-preview" alt="" />
+                    <div class="upload-overlay">
+                        <span class="upload-overlay-text">Change</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Garment -->
+            <div class="upload-col">
+                <span class="upload-col-label">Garment</span>
+                <div class="upload-zone" id="garment-zone">
+                    <input type="file" id="garment-input" accept="image/*" />
+                    <span class="upload-icon">👕</span>
+                    <span class="upload-hint">T-shirt, dress,<br>jacket…</span>
+                    <img id="garment-preview" class="upload-preview" alt="" />
+                    <div class="upload-overlay">
+                        <span class="upload-overlay-text">Change</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- ── Fit Style ───────────────────────────────── -->
+    <div id="fit-section">
+        <div class="label">Fit Style</div>
+        <div class="fit-group">
+            <button class="fit-btn" data-fit="tight">
+                <span class="fit-btn-icon">🩱</span>
+                Tight
+                <span class="fit-btn-sub">Fitted</span>
+            </button>
+            <button class="fit-btn selected" data-fit="regular">
+                <span class="fit-btn-icon">👕</span>
+                Regular
+                <span class="fit-btn-sub">Standard</span>
+            </button>
+            <button class="fit-btn" data-fit="oversized">
+                <span class="fit-btn-icon">🧥</span>
+                Oversized
+                <span class="fit-btn-sub">Loose</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ── Generate Button ─────────────────────────── -->
+    <button class="btn-primary" id="btn-generate" disabled>
+        Generate Try-On
+    </button>
+
+    <!-- ── Processing Card ─────────────────────────── -->
+    <div class="processing-card" id="processing-card">
+        <div class="processing-spinner"></div>
+        <div class="processing-title">Generating Try-On…</div>
+        <div class="processing-sub" id="proc-sub">Analysing images</div>
+        <div class="proc-steps">
+            <div class="proc-step" id="ps-1">
+                <span class="proc-step-dot"></span> Body pose detection
+            </div>
+            <div class="proc-step" id="ps-2">
+                <span class="proc-step-dot"></span> Person segmentation
+            </div>
+            <div class="proc-step" id="ps-3">
+                <span class="proc-step-dot"></span> Garment alignment
+            </div>
+            <div class="proc-step" id="ps-4">
+                <span class="proc-step-dot"></span> Lighting &amp; rendering
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Result Section ──────────────────────────── -->
+    <div class="result-section" id="result-section">
+        <div class="label">Result</div>
+        <div class="result-image-box">
+            <img id="result-img" src="" alt="Try-on result" />
+        </div>
+        <div class="result-actions">
+            <button class="btn-add" id="btn-add-to-canvas">
+                Add to Editor
+            </button>
+            <button class="btn-secondary" id="btn-reset">
+                Reset
+            </button>
+        </div>
+    </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script type="module" src="add-on-console-override.js"></script>
+<script type="module" src="ui/index.js"></script>
+</body>
+</html>

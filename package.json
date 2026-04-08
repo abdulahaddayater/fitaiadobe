@@ -1,0 +1,29 @@
+{
+    "name": "express-virtual-try-on-ai",
+    "version": "1.0.0",
+    "description": "AI-powered garment visualization add-on for Adobe Express.",
+    "scripts": {
+        "clean": "ccweb-add-on-scripts clean",
+        "build": "ccweb-add-on-scripts build",
+        "start": "ccweb-add-on-scripts start",
+        "api": "node server/index.mjs",
+        "dev": "kill-port 5241 5242 && concurrently -k -n ADDON,API -c blue,green \"npm:start\" \"npm:api\"",
+        "package": "ccweb-add-on-scripts package"
+    },
+    "keywords": [
+        "Adobe",
+        "Creative Cloud Web",
+        "Add-on",
+        "panel"
+    ],
+    "devDependencies": {
+        "@adobe/ccweb-add-on-scripts": "^3.8.0",
+        "@types/adobe__ccweb-add-on-sdk": "^1.3.0",
+        "concurrently": "^9.2.1",
+        "kill-port": "^2.0.1"
+    },
+    "dependencies": {
+        "dotenv": "^16.6.1",
+        "express": "^5.1.0"
+    }
+}
