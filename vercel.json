@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/tryon.mjs": {
-      "runtime": "vercel/node@20.x"
+      "maxDuration": 120
     }
   },
   "rewrites": [
