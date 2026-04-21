@@ -16,6 +16,16 @@ function setCors(req, res) {
 const FASHN_API_KEY = process.env.FASHN_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+async function verifyOvixCode(code) {
+  const res = await fetch("https://ovixaistudio.vercel.app/api/verify-code", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code })
+  });
+  const json = await res.json().catch(() => ({}));
+  return Boolean(res.ok && json?.valid === true);
+}
+
 async function generateWithFashn(personDataUrl, garmentDataUrl) {
   const body = {
     model_image: personDataUrl,
@@ -171,10 +181,19 @@ export default async function handler(req, res) {
 
   try {
     const body = await readJsonBody(req);
-    const { personDataUrl, garmentDataUrl, fitStyle } = body ?? {};
+    const { personDataUrl, garmentDataUrl, fitStyle, code } = body ?? {};
 
     if (!personDataUrl || !garmentDataUrl) {
       return res.status(400).json({ error: "Missing personDataUrl or garmentDataUrl" });
+    }
+
+    const normalized = String(code ?? "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(normalized)) {
+      return res.status(401).json({ error: "Invalid Ovix code format" });
+    }
+    const ok = await verifyOvixCode(normalized);
+    if (!ok) {
+      return res.status(401).json({ error: "Invalid Ovix code" });
     }
 
     const url = FASHN_API_KEY

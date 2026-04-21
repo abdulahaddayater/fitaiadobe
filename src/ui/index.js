@@ -72,6 +72,37 @@ const btnReset       = $("btn-reset");
 
 const toastEl = $("toast");
 
+// ── Ovix connect (code) ───────────────────────────────────────────────────────
+const ovixCodeInput = $("ovix-code-input");
+const btnConnect = $("btn-connect");
+const CODE_KEY = "fitai_ovix_code";
+
+function normalizeCode(v) {
+    return String(v || "").trim().toUpperCase();
+}
+
+function isValidCodeFormat(code) {
+    return /^[A-Z0-9]{6}$/.test(code);
+}
+
+function getStoredCode() {
+    return normalizeCode(localStorage.getItem(CODE_KEY));
+}
+
+function setStoredCode(code) {
+    localStorage.setItem(CODE_KEY, code);
+}
+
+async function verifyCodeWithOvix(code) {
+    const res = await fetch("https://ovixaistudio.vercel.app/api/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok && json?.valid === true, json };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -121,11 +152,17 @@ function allStepsDone() {
 async function runTryOn() {
     setStep(0, "Sending request…");
 
+    const code = getStoredCode();
+    if (!isValidCodeFormat(code)) {
+        throw new Error("Please connect your Ovix code (6 characters) first.");
+    }
+
     const payload = {
         personDataUrl: state.personDataUrl,
         garmentDataUrl: state.garmentDataUrl,
         fitStyle: state.selectedFit,
         extraPrompt: EXTRA_PROMPT,
+        code,
     };
 
     const API_BASE_URL = await getApiBaseUrl();
@@ -187,6 +224,31 @@ btnGenerate.addEventListener("click", async () => {
     } finally {
         processingCard.classList.remove("visible");
         btnGenerate.disabled = false;
+    }
+});
+
+// ── Connect handler ──────────────────────────────────────────────────────────
+btnConnect?.addEventListener("click", async () => {
+    const raw = normalizeCode(ovixCodeInput?.value);
+    if (!isValidCodeFormat(raw)) {
+        showToast("Invalid code format. Use 6 letters/numbers.", "error");
+        return;
+    }
+    btnConnect.disabled = true;
+    btnConnect.textContent = "Checking…";
+    try {
+        const { ok } = await verifyCodeWithOvix(raw);
+        if (!ok) {
+            showToast("Invalid Ovix code. Copy it again from Ovix Dashboard.", "error");
+            return;
+        }
+        setStoredCode(raw);
+        showToast("Connected!", "success");
+    } catch (e) {
+        showToast(e?.message || "Could not verify code. Try again.", "error");
+    } finally {
+        btnConnect.disabled = false;
+        btnConnect.textContent = "Connect";
     }
 });
 
@@ -304,6 +366,10 @@ document.querySelectorAll(".fit-btn").forEach(btn => {
 
 // ── SDK init ──────────────────────────────────────────────────────────────────
 addOnUISdk.ready.then(() => {
+    // Prefill saved code if available
+    const saved = getStoredCode();
+    if (ovixCodeInput && saved) ovixCodeInput.value = saved;
+
     setupUploadZone(
         personZone, personInput, personPreview,
         dataUrl => { state.personDataUrl = dataUrl; }
