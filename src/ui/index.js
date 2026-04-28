@@ -1,38 +1,14 @@
 import addOnUISdk from "https://new.express.adobe.com/static/add-on-sdk/sdk.js";
 
 // ── API selection ─────────────────────────────────────────────────────────────
-// Local is fastest for dev, but hosted add-ons cannot reach loopback.
-const LOCAL_API_BASE_URL = "https://localhost:5242";
-const VERCEL_API_BASE_URL = "https://fitaiadobe.vercel.app";
+// Deployed backend (Vercel) for submitted add-on / other devices
+const VERCEL_API_BASE_URL = "https://fitaibackend-gamma.vercel.app";
 
 let resolvedApiBaseUrl = null;
 async function getApiBaseUrl() {
     if (resolvedApiBaseUrl) return resolvedApiBaseUrl;
 
-    // If we're clearly running on Adobe-hosted origin, never try loopback.
-    const host = window.location.hostname || "";
-    const isAdobeHosted = /\.wxp\.adobe-addons\.com$/i.test(host);
-    if (isAdobeHosted) {
-        resolvedApiBaseUrl = VERCEL_API_BASE_URL;
-        return resolvedApiBaseUrl;
-    }
-
-    // If we're on localhost, prefer local API but fall back to Vercel if it's down.
-    if (host === "localhost") {
-        try {
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), 800);
-            const res = await fetch(`${LOCAL_API_BASE_URL}/health`, { signal: controller.signal });
-            clearTimeout(t);
-            if (res.ok) {
-                resolvedApiBaseUrl = LOCAL_API_BASE_URL;
-                return resolvedApiBaseUrl;
-            }
-        } catch {
-            // ignore; fall back below
-        }
-    }
-
+    // Always use Vercel so requests never go to localhost.
     resolvedApiBaseUrl = VERCEL_API_BASE_URL;
     return resolvedApiBaseUrl;
 }
@@ -46,8 +22,11 @@ const EXTRA_PROMPT =
 const state = {
     personDataUrl:  null,   // base64 data-URL of uploaded person photo
     garmentDataUrl: null,   // base64 data-URL of uploaded garment photo
+    personFile:     null,   // original File object (for multipart upload)
+    garmentFile:    null,   // original File object (for multipart upload)
     selectedFit:    "regular",
     resultUrl:      null,   // final image URL returned by Replicate
+    isGenerating:   false,
 };
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
@@ -56,10 +35,12 @@ const $ = id => document.getElementById(id);
 const personZone     = $("person-zone");
 const personInput    = $("person-input");
 const personPreview  = $("person-preview");
+const personHelper   = $("person-helper");
 
 const garmentZone    = $("garment-zone");
 const garmentInput   = $("garment-input");
 const garmentPreview = $("garment-preview");
+const garmentHelper  = $("garment-helper");
 
 const btnGenerate    = $("btn-generate");
 const processingCard = $("processing-card");
@@ -72,37 +53,6 @@ const btnReset       = $("btn-reset");
 
 const toastEl = $("toast");
 
-// ── Ovix connect (code) ───────────────────────────────────────────────────────
-const ovixCodeInput = $("ovix-code-input");
-const btnConnect = $("btn-connect");
-const CODE_KEY = "fitai_ovix_code";
-
-function normalizeCode(v) {
-    return String(v || "").trim().toUpperCase();
-}
-
-function isValidCodeFormat(code) {
-    return /^[A-Z0-9]{6}$/.test(code);
-}
-
-function getStoredCode() {
-    return normalizeCode(localStorage.getItem(CODE_KEY));
-}
-
-function setStoredCode(code) {
-    localStorage.setItem(CODE_KEY, code);
-}
-
-async function verifyCodeWithOvix(code) {
-    const res = await fetch("https://ovixaistudio.vercel.app/api/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-    });
-    const json = await res.json().catch(() => ({}));
-    return { ok: res.ok && json?.valid === true, json };
-}
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -114,6 +64,23 @@ function showToast(msg, type = "") {
     toastTimer = setTimeout(() => toastEl.classList.remove("show"), 3500);
 }
 
+function setGenerating(isGenerating) {
+    state.isGenerating = isGenerating;
+
+    // Lock uploads
+    personInput.disabled = isGenerating;
+    garmentInput.disabled = isGenerating;
+    personZone.classList.toggle("locked", isGenerating);
+    garmentZone.classList.toggle("locked", isGenerating);
+
+    // Lock fit controls
+    document.querySelectorAll(".fit-btn").forEach((b) => { b.disabled = isGenerating; });
+
+    // Lock actions
+    btnReset.disabled = isGenerating;
+    btnAddToCanvas.disabled = isGenerating || !state.resultUrl;
+}
+
 function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -122,6 +89,9 @@ function readFileAsDataUrl(file) {
         reader.readAsDataURL(file);
     });
 }
+
+const SUPPORTED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const SUPPORTED_IMAGE_EXTS  = new Set(["jpg", "jpeg", "png", "webp"]);
 
 // ── Processing step UI ────────────────────────────────────────────────────────
 const STEP_IDS = ["ps-1", "ps-2", "ps-3", "ps-4"];
@@ -152,36 +122,27 @@ function allStepsDone() {
 async function runTryOn() {
     setStep(0, "Sending request…");
 
-    const code = getStoredCode();
-    if (!isValidCodeFormat(code)) {
-        throw new Error("Please connect your Ovix code (6 characters) first.");
-    }
-
-    const payload = {
-        personDataUrl: state.personDataUrl,
-        garmentDataUrl: state.garmentDataUrl,
-        fitStyle: state.selectedFit,
-        extraPrompt: EXTRA_PROMPT,
-        code,
-    };
-
     const API_BASE_URL = await getApiBaseUrl();
 
+    if (!state.personFile || !state.garmentFile) {
+        throw new Error("Please upload both images first.");
+    }
+
+    const form = new FormData();
+    form.append("fitStyle", state.selectedFit);
+    form.append("extraPrompt", EXTRA_PROMPT);
+    form.append("person_image", state.personFile, state.personFile.name || "person.png");
+    form.append("garment_image", state.garmentFile, state.garmentFile.name || "garment.png");
+
     console.group("[FitAI] Local try-on request");
-    console.log("URL:", `${API_BASE_URL}/tryon`);
-    console.log("Payload:", {
-        ...payload,
-        // Keep logs readable
-        personDataUrl: payload.personDataUrl ? `dataUrl(${payload.personDataUrl.length} chars)` : null,
-        garmentDataUrl: payload.garmentDataUrl ? `dataUrl(${payload.garmentDataUrl.length} chars)` : null,
-    });
+    console.log("URL:", `${API_BASE_URL}/fitAI/try-on`);
+    console.log("fitStyle:", state.selectedFit);
     console.groupEnd();
 
     setStep(1, "Generating…");
-    const res = await fetch(`${API_BASE_URL}/tryon`, {
+    const res = await fetch(`${API_BASE_URL}/fitAI/try-on`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: form,
     });
 
     if (!res.ok) {
@@ -190,7 +151,8 @@ async function runTryOn() {
     }
 
     const json = await res.json();
-    if (!json?.url) throw new Error("No result url returned.");
+    const outUrl = json?.url || json?.image_url;
+    if (!outUrl) throw new Error("No result url returned.");
 
     if (json?.promptUsed) {
         console.group("[FitAI] Prompt used (server-side)");
@@ -199,7 +161,7 @@ async function runTryOn() {
     }
 
     allStepsDone();
-    return json.url;
+    return outUrl;
 }
 
 // ── Generate handler ──────────────────────────────────────────────────────────
@@ -209,6 +171,7 @@ btnGenerate.addEventListener("click", async () => {
     processingCard.classList.add("visible");
     resetSteps();
     state.resultUrl = null;
+    setGenerating(true);
 
     try {
         const url = await runTryOn();
@@ -224,31 +187,7 @@ btnGenerate.addEventListener("click", async () => {
     } finally {
         processingCard.classList.remove("visible");
         btnGenerate.disabled = false;
-    }
-});
-
-// ── Connect handler ──────────────────────────────────────────────────────────
-btnConnect?.addEventListener("click", async () => {
-    const raw = normalizeCode(ovixCodeInput?.value);
-    if (!isValidCodeFormat(raw)) {
-        showToast("Invalid code format. Use 6 letters/numbers.", "error");
-        return;
-    }
-    btnConnect.disabled = true;
-    btnConnect.textContent = "Checking…";
-    try {
-        const { ok } = await verifyCodeWithOvix(raw);
-        if (!ok) {
-            showToast("Invalid Ovix code. Copy it again from Ovix Dashboard.", "error");
-            return;
-        }
-        setStoredCode(raw);
-        showToast("Connected!", "success");
-    } catch (e) {
-        showToast(e?.message || "Could not verify code. Try again.", "error");
-    } finally {
-        btnConnect.disabled = false;
-        btnConnect.textContent = "Connect";
+        setGenerating(false);
     }
 });
 
@@ -280,8 +219,11 @@ btnAddToCanvas.addEventListener("click", async () => {
 
 // ── Reset ─────────────────────────────────────────────────────────────────────
 btnReset.addEventListener("click", () => {
+    if (state.isGenerating) return;
     state.personDataUrl  = null;
     state.garmentDataUrl = null;
+    state.personFile     = null;
+    state.garmentFile    = null;
     state.resultUrl      = null;
     state.selectedFit    = "regular";
 
@@ -311,40 +253,74 @@ btnReset.addEventListener("click", () => {
     resultImg.src = "";
 
     updateGenerateBtn();
+    setGenerating(false);
     showToast("Reset — upload new images to start.", "");
 });
 
 // ── Upload zones ──────────────────────────────────────────────────────────────
-function setupUploadZone(zone, input, previewEl, onLoad) {
+function setupUploadZone(zone, input, previewEl, helperEl, onLoad) {
+    function setHelper(msg, type = "") {
+        if (!helperEl) return;
+        helperEl.textContent = msg || "";
+        helperEl.classList.toggle("error", type === "error");
+    }
+
+    function isSupportedImage(file) {
+        if (!file) return false;
+        if (file.type && SUPPORTED_IMAGE_MIMES.has(file.type)) return true;
+        const name = (file.name || "").toLowerCase();
+        const ext = name.includes(".") ? name.split(".").pop() : "";
+        return SUPPORTED_IMAGE_EXTS.has(ext);
+    }
+
     async function handleFile(file) {
-        if (!file || !file.type.startsWith("image/")) {
+        if (state.isGenerating) return;
+        if (!file) return;
+        if (!file.type?.startsWith("image/") && !file.name) {
+            setHelper("Please upload a valid image file.", "error");
             showToast("Please upload a valid image file.", "error");
             return;
         }
+        if (!isSupportedImage(file)) {
+            input.value = "";
+            previewEl.src = "";
+            previewEl.style.display = "none";
+            zone.classList.remove("loaded");
+            zone.querySelectorAll(".upload-icon, .upload-hint")
+                .forEach(el => { el.style.display = ""; });
+            setHelper("Unsupported image format. Please use JPG/JPEG, PNG, or WEBP.", "error");
+            showToast("Unsupported image format.", "error");
+            return;
+        }
         try {
+            setHelper("");
             const dataUrl = await readFileAsDataUrl(file);
             previewEl.src          = dataUrl;
             previewEl.style.display = "block";
             zone.querySelectorAll(".upload-icon, .upload-hint")
                 .forEach(el => { el.style.display = "none"; });
             zone.classList.add("loaded");
-            onLoad(dataUrl);
+            onLoad(dataUrl, file);
             updateGenerateBtn();
         } catch {
+            setHelper("Could not load image. Try again.", "error");
             showToast("Could not load image. Try again.", "error");
         }
     }
 
     input.addEventListener("change", () => {
+        if (state.isGenerating) return;
         if (input.files[0]) handleFile(input.files[0]);
     });
 
     zone.addEventListener("dragover", e => {
+        if (state.isGenerating) return;
         e.preventDefault();
         zone.classList.add("dragover");
     });
     zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
     zone.addEventListener("drop", e => {
+        if (state.isGenerating) return;
         e.preventDefault();
         zone.classList.remove("dragover");
         handleFile(e.dataTransfer.files[0]);
@@ -352,12 +328,13 @@ function setupUploadZone(zone, input, previewEl, onLoad) {
 }
 
 function updateGenerateBtn() {
-    btnGenerate.disabled = !(state.personDataUrl && state.garmentDataUrl);
+    btnGenerate.disabled = state.isGenerating || !(state.personDataUrl && state.garmentDataUrl);
 }
 
 // ── Fit buttons ───────────────────────────────────────────────────────────────
 document.querySelectorAll(".fit-btn").forEach(btn => {
     btn.addEventListener("click", () => {
+        if (state.isGenerating) return;
         document.querySelectorAll(".fit-btn").forEach(b => b.classList.remove("selected"));
         btn.classList.add("selected");
         state.selectedFit = btn.dataset.fit;
@@ -366,16 +343,13 @@ document.querySelectorAll(".fit-btn").forEach(btn => {
 
 // ── SDK init ──────────────────────────────────────────────────────────────────
 addOnUISdk.ready.then(() => {
-    // Prefill saved code if available
-    const saved = getStoredCode();
-    if (ovixCodeInput && saved) ovixCodeInput.value = saved;
-
     setupUploadZone(
-        personZone, personInput, personPreview,
-        dataUrl => { state.personDataUrl = dataUrl; }
+        personZone, personInput, personPreview, personHelper,
+        (dataUrl, file) => { state.personDataUrl = dataUrl; state.personFile = file; }
     );
     setupUploadZone(
-        garmentZone, garmentInput, garmentPreview,
-        dataUrl => { state.garmentDataUrl = dataUrl; }
+        garmentZone, garmentInput, garmentPreview, garmentHelper,
+        (dataUrl, file) => { state.garmentDataUrl = dataUrl; state.garmentFile = file; }
     );
+    setGenerating(false);
 });

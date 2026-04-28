@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fit AI</title>
+    <title>FitAI for Adobe Express</title>
     <style>
         /* ── Spectrum-inspired tokens ───────────────────── */
         :root {
@@ -147,6 +147,7 @@
             align-items: center;
             justify-content: center;
             border-radius: calc(var(--radius-md) - 1px);
+            pointer-events: none;
         }
 
         .upload-zone.loaded:hover .upload-overlay { display: flex; }
@@ -417,12 +418,53 @@
             font-size: 12px;
             font-weight: 600;
             padding: 8px 16px;
-            border-radius: 20px;
-            white-space: nowrap;
+            border-radius: 12px;
+            white-space: normal;
+            max-width: calc(100% - 28px);
+            overflow-wrap: anywhere;
+            max-height: 40vh;
+            overflow: auto;
             box-shadow: var(--shadow-md);
             transition: transform .25s ease, opacity .25s ease;
             opacity: 0;
             z-index: 999;
+        }
+
+        .helper-text {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            line-height: 1.4;
+        }
+
+        .helper-text a {
+            color: var(--accent);
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .helper-text a:hover {
+            text-decoration: underline;
+        }
+
+        .helper-text.error {
+            color: var(--error);
+        }
+
+        /* ── Text input ───────────────────────────────────── */
+        .text-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg);
+            color: var(--text-primary);
+            font-family: var(--font);
+            font-size: 13px;
+            outline: none;
+        }
+        .text-input:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(82, 88, 228, 0.18);
         }
 
         .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
@@ -430,6 +472,12 @@
         .toast.error   { background: var(--error); }
 
         .hidden { display: none !important; }
+
+        .locked {
+            opacity: 0.7;
+            pointer-events: none;
+            user-select: none;
+        }
     </style>
 </head>
 <body>
@@ -464,33 +512,36 @@
 
             <!-- Person Photo -->
             <div class="upload-col">
-                <span class="upload-col-label">Person</span>
+                <span class="upload-col-label">Upload a person or garment image</span>
                 <div class="upload-zone" id="person-zone">
-                    <input type="file" id="person-input" accept="image/*" />
+                    <input type="file" id="person-input" accept="image/jpeg,image/png,image/webp" />
                     <span class="upload-icon">🧍</span>
-                    <span class="upload-hint">Photo or<br>model image</span>
+                    <span class="upload-hint">Person or garment<br>image</span>
                     <img id="person-preview" class="upload-preview" alt="" />
                     <div class="upload-overlay">
                         <span class="upload-overlay-text">Change</span>
                     </div>
                 </div>
+                <div class="helper-text" id="person-helper"></div>
             </div>
 
             <!-- Garment -->
             <div class="upload-col">
-                <span class="upload-col-label">Garment</span>
+                <span class="upload-col-label">Upload a person or garment image</span>
                 <div class="upload-zone" id="garment-zone">
-                    <input type="file" id="garment-input" accept="image/*" />
+                    <input type="file" id="garment-input" accept="image/jpeg,image/png,image/webp" />
                     <span class="upload-icon">👕</span>
-                    <span class="upload-hint">T-shirt, dress,<br>jacket…</span>
+                    <span class="upload-hint">Person or garment<br>image</span>
                     <img id="garment-preview" class="upload-preview" alt="" />
                     <div class="upload-overlay">
                         <span class="upload-overlay-text">Change</span>
                     </div>
                 </div>
+                <div class="helper-text" id="garment-helper"></div>
             </div>
 
         </div>
+        <div class="helper-text">Please ensure that one image is of a person and the other is of a garment.</div>
     </div>
 
     <hr class="divider" />
@@ -521,6 +572,7 @@
     <button class="btn-primary" id="btn-generate" disabled>
         Generate Try-On
     </button>
+    <div class="helper-text">This process cannot be cancelled once started.</div>
 
     <!-- ── Processing Card ─────────────────────────── -->
     <div class="processing-card" id="processing-card">

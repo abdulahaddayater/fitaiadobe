@@ -1,6 +1,6 @@
 {
     "name": "express-virtual-try-on-ai",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "AI-powered garment visualization add-on for Adobe Express.",
     "scripts": {
         "clean": "ccweb-add-on-scripts clean",

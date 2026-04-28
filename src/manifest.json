@@ -1,6 +1,6 @@
 {
     "testId": "a7cbd476-670c-4ad9-9c76-0fae63441ab3",
-    "name": "Fit Ai",
+    "name": "FitAI for Adobe Express",
     "version": "1.0.0",
     "manifestVersion": 2,
     "requirements": {
@@ -16,7 +16,13 @@
             "type": "panel",
             "id": "panel1",
             "main": "index.html",
-            "documentSandbox": "sandbox/code.js"
+            "documentSandbox": "sandbox/code.js",
+            "permissions": {
+                "sandbox": [
+                    "allow-popups",
+                    "allow-popups-to-escape-sandbox"
+                ]
+            }
         }
     ]
 }
