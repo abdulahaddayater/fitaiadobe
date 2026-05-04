@@ -16,13 +16,7 @@
             "type": "panel",
             "id": "panel1",
             "main": "index.html",
-            "documentSandbox": "sandbox/code.js",
-            "permissions": {
-                "sandbox": [
-                    "allow-popups",
-                    "allow-popups-to-escape-sandbox"
-                ]
-            }
+            "documentSandbox": "sandbox/code.js"
         }
     ]
 }
