@@ -1,4 +1,0 @@
-Remove Ovix verification and restore tryon flow
-
-Drops legacy Ovix code verification from the Vercel API and restores the add-on UI to call /tryon with JSON payloads.
-
